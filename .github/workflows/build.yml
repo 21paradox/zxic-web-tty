@@ -123,49 +123,46 @@ jobs:
         echo "Checking toolchain configuration..."
         $GCC_BIN -dumpmachine
         
-        # Check if it's soft float
-        $GCC_BIN -v 2>&1 | grep -i float || true
-        
-    - name: Build at demo
+    - name: Build at_dlopen demo (NO .so dependency)
       working-directory: demos/at
       run: |
-        echo "Building at demo with buildroot toolchain..."
+        echo "Building at_dlopen demo with dlopen (no .so files needed)..."
         ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-gcc \
           -mfloat-abi=soft \
-          -o at at.c \
-          -L../../lib \
-          -I../../include \
-          -latutils -lnvram -lsoftap -lsoft_timer -lpthread
-        echo "at demo built successfully!"
-        file at
+          -o at_dlopen at_dlopen.c \
+          -ldl
+        echo "at_dlopen built successfully!"
+        file at_dlopen
+        echo "=== Verifying no dynamic dependency on libatutils ==="
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d at_dlopen | grep NEEDED || true
         
-    - name: Build nv demo
+    - name: Build nv_dlopen demo (NO .so dependency)
       working-directory: demos/nv
       run: |
-        echo "Building nv demo with buildroot toolchain..."
+        echo "Building nv_dlopen demo with dlopen (no .so files needed)..."
         ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-gcc \
           -mfloat-abi=soft \
-          -o nv nv.c \
-          -L../../lib \
-          -I../../include \
-          -lnvram
-        echo "nv demo built successfully!"
-        file nv
+          -o nv_dlopen nv_dlopen.c \
+          -ldl
+        echo "nv_dlopen built successfully!"
+        file nv_dlopen
+        echo "=== Verifying no dynamic dependency on libnvram ==="
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d nv_dlopen | grep NEEDED || true
         
     - name: Check binary info
       run: |
-        echo "=== at binary info ==="
-        file demos/at/at
-        readelf -h demos/at/at | head -20
+        echo "=== at_dlopen binary info ==="
+        file demos/at/at_dlopen
+        readelf -h demos/at/at_dlopen | head -20
         
-        echo "=== nv binary info ==="
-        file demos/nv/nv
-        readelf -h demos/nv/nv | head -20
+        echo "=== nv_dlopen binary info ==="
+        file demos/nv/nv_dlopen
+        readelf -h demos/nv/nv_dlopen | head -20
         
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: arm-binaries-buildroot-armv7-uclibc-softfloat
+        name: arm-binaries-dlopen
         path: |
-          demos/at/at
-          demos/nv/nv
+          demos/at/at_dlopen
+          demos/nv/nv_dlopen
