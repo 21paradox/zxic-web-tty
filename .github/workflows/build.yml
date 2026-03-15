@@ -1,0 +1,171 @@
+name: Build Demos with Buildroot Toolchain
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    env:
+      BUILDROOT_VERSION: 2024.02.1
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          wget \
+          tar \
+          cpio \
+          unzip \
+          rsync \
+          bc \
+          libncurses5-dev \
+          libncursesw5-dev \
+          file \
+          python3
+        
+    - name: Cache buildroot toolchain
+      uses: actions/cache@v4
+      id: buildroot-cache
+      with:
+        path: ~/buildroot-output
+        key: buildroot-${{ env.BUILDROOT_VERSION }}-armv7-uclibc-softfloat
+        
+    - name: Download and extract buildroot
+      if: steps.buildroot-cache.outputs.cache-hit != 'true'
+      run: |
+        cd ~
+        wget -q https://buildroot.org/downloads/buildroot-${BUILDROOT_VERSION}.tar.xz
+        tar -xf buildroot-*.tar.xz
+        
+    - name: Configure buildroot for ARMv7 + uClibc + soft-float
+      if: steps.buildroot-cache.outputs.cache-hit != 'true'
+      run: |
+        cd ~/buildroot-${BUILDROOT_VERSION}
+        
+        # Create config for ARMv7 soft-float + uClibc
+        cat > .config << 'EOF'
+        # Target Architecture
+        BR2_arm=y
+        BR2_cortex_a7=y
+        
+        # Soft float (no VFP, no hard float)
+        BR2_ARM_SOFT_FLOAT=y
+        BR2_ARM_EABI=y
+        BR2_ARM_INSTRUCTIONS_ARM=y
+        
+        # Use uClibc
+        BR2_TOOLCHAIN_BUILDROOT_UCLIBC=y
+        BR2_KERNEL_HEADERS_5_10=y
+        BR2_UCLIBC_VERSION_1_0_44=y
+        BR2_BINUTILS_VERSION_2_40_X=y
+        BR2_GCC_VERSION_12_X=y
+        
+        # Don't build target packages, just toolchain
+        BR2_INIT_NONE=y
+        BR2_SYSTEM_BIN_SH_NONE=y
+        BR2_PACKAGE_BUSYBOX=n
+        BR2_TARGET_ROOTFS_CPIO=n
+        BR2_TARGET_ROOTFS_EXT2=n
+        BR2_TARGET_ROOTFS_INITRAMFS=n
+        BR2_TARGET_ROOTFS_TAR=n
+        
+        # Enable toolchain only build
+        BR2_TOOLCHAIN=y
+        EOF
+        
+        make olddefconfig
+        
+    - name: Build toolchain (this may take 20-40 minutes)
+      if: steps.buildroot-cache.outputs.cache-hit != 'true'
+      run: |
+        cd ~/buildroot-${BUILDROOT_VERSION}
+        make toolchain -j$(nproc)
+        
+    - name: Save toolchain to cache directory
+      if: steps.buildroot-cache.outputs.cache-hit != 'true'
+      run: |
+        mkdir -p ~/buildroot-output
+        cp -r ~/buildroot-${BUILDROOT_VERSION}/output ~/buildroot-output/
+        
+    - name: Restore toolchain from cache
+      if: steps.buildroot-cache.outputs.cache-hit == 'true'
+      run: |
+        mkdir -p ~/buildroot-${BUILDROOT_VERSION}
+        cp -r ~/buildroot-output/output ~/buildroot-${BUILDROOT_VERSION}/
+        
+    - name: Setup toolchain environment
+      run: |
+        TOOLCHAIN_PATH=~/buildroot-${BUILDROOT_VERSION}/output/host
+        echo "TOOLCHAIN_PATH=$TOOLCHAIN_PATH" >> $GITHUB_ENV
+        echo "$TOOLCHAIN_PATH/bin" >> $GITHUB_PATH
+        
+        # Find the actual gcc binary
+        GCC_BIN=$(ls $TOOLCHAIN_PATH/bin/arm*-linux-*-gcc | head -1)
+        GCC_PREFIX=$(basename $GCC_BIN | sed 's/-gcc$//')
+        echo "GCC_PREFIX=$GCC_PREFIX" >> $GITHUB_ENV
+        echo "Found toolchain: $GCC_PREFIX"
+        $GCC_BIN --version
+        
+    - name: Verify toolchain float type
+      run: |
+        GCC_BIN=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-gcc
+        echo "Checking toolchain configuration..."
+        $GCC_BIN -dumpmachine
+        
+        # Check if it's soft float
+        $GCC_BIN -v 2>&1 | grep -i float || true
+        
+    - name: Build at demo
+      working-directory: demos/at
+      run: |
+        echo "Building at demo with buildroot toolchain..."
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-gcc \
+          -mfloat-abi=soft \
+          -o at at.c \
+          -L../../lib \
+          -I../../include \
+          -latutils -lnvram -lsoftap -lsoft_timer -lpthread
+        echo "at demo built successfully!"
+        file at
+        
+    - name: Build nv demo
+      working-directory: demos/nv
+      run: |
+        echo "Building nv demo with buildroot toolchain..."
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-gcc \
+          -mfloat-abi=soft \
+          -o nv nv.c \
+          -L../../lib \
+          -I../../include \
+          -lnvram
+        echo "nv demo built successfully!"
+        file nv
+        
+    - name: Check binary info
+      run: |
+        echo "=== at binary info ==="
+        file demos/at/at
+        readelf -h demos/at/at | head -20
+        
+        echo "=== nv binary info ==="
+        file demos/nv/nv
+        readelf -h demos/nv/nv | head -20
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: arm-binaries-buildroot-armv7-uclibc-softfloat
+        path: |
+          demos/at/at
+          demos/nv/nv
