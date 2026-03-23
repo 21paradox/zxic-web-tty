@@ -166,6 +166,7 @@ jobs:
           --disable-shared \
           --disable-all-programs \
           --enable-swapon \
+          --enable-libblkid \
           --without-ncurses \
           --without-tinfo \
           --without-readline \
@@ -184,8 +185,8 @@ jobs:
           LDFLAGS="-static" \
           CFLAGS="-mfloat-abi=soft -Os"
         
-        # Build only swapon
-        make swapon -j$(nproc)
+        # Build libblkid and swapon
+        make -j$(nproc)
         
         # Strip and verify
         ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip sys-utils/swapon
