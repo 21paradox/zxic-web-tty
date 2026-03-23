@@ -149,6 +149,55 @@ jobs:
         echo "=== Verifying no dynamic dependency on libnvram ==="
         ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d nv_dlopen | grep NEEDED || true
         
+    - name: Static build swapon from util-linux
+      run: |
+        # Download util-linux source
+        UTIL_LINUX_VERSION=2.39.3
+        cd /tmp
+        wget -q https://mirrors.edge.kernel.org/pub/linux/utils/util-linux/v2.39/util-linux-${UTIL_LINUX_VERSION}.tar.xz
+        tar -xf util-linux-${UTIL_LINUX_VERSION}.tar.xz
+        cd util-linux-${UTIL_LINUX_VERSION}
+        
+        # Configure for static build with cross toolchain
+        CC=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-gcc \
+        ./configure \
+          --host=arm-linux \
+          --enable-static \
+          --disable-shared \
+          --disable-all-programs \
+          --enable-swapon \
+          --without-ncurses \
+          --without-tinfo \
+          --without-readline \
+          --without-utempter \
+          --without-cap-ng \
+          --without-selinux \
+          --without-audit \
+          --without-udev \
+          --without-systemd \
+          --without-cryptsetup \
+          --without-btrfs \
+          --without-zlib \
+          --without-user \
+          --without-smack \
+          --without-econf \
+          LDFLAGS="-static" \
+          CFLAGS="-mfloat-abi=soft -Os"
+        
+        # Build only swapon
+        make swapon -j$(nproc)
+        
+        # Strip and verify
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip sys-utils/swapon
+        file sys-utils/swapon
+        
+        # Copy to workspace
+        cp sys-utils/swapon ${{ github.workspace }}/swapon-static
+        
+        echo "=== swapon static binary info ==="
+        file ${{ github.workspace }}/swapon-static
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d ${{ github.workspace }}/swapon-static | grep NEEDED || echo "No dynamic dependencies - fully static!"
+        
     - name: Check binary info
       run: |
         echo "=== at_dlopen binary info ==="
@@ -159,6 +208,10 @@ jobs:
         file demos/nv/nv_dlopen
         readelf -h demos/nv/nv_dlopen | head -20
         
+        echo "=== swapon-static binary info ==="
+        file swapon-static
+        readelf -h swapon-static | head -20
+        
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -166,3 +219,4 @@ jobs:
         path: |
           demos/at/at_dlopen
           demos/nv/nv_dlopen
+          swapon-static
