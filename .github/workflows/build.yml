@@ -167,6 +167,7 @@ jobs:
           --disable-all-programs \
           --enable-swapon \
           --enable-libblkid \
+          --enable-libmount \
           --without-ncurses \
           --without-tinfo \
           --without-readline \
