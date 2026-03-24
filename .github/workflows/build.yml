@@ -192,82 +192,72 @@ jobs:
         cp busybox ${{ github.workspace }}/
         ls -la ${{ github.workspace }}/busybox
 
-    - name: Static build curl with mbedtls (HTTP/HTTPS support)
+     - name: Static build tcpdump
       run: |
         # Set toolchain
         export CROSS_COMPILE=${{ env.GCC_PREFIX }}-
         export PATH=${{ env.TOOLCHAIN_PATH }}/bin:$PATH
         CC=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-gcc
+        AR=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-ar
         
-        # Build mbedtls first (lightweight SSL library)
-        MBEDTLS_VERSION=2.28.9
+        # Build libpcap first
+        LIBPCAP_VERSION=1.10.4
         cd /tmp
-        wget -q https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v${MBEDTLS_VERSION}.tar.gz -O mbedtls-${MBEDTLS_VERSION}.tar.gz
-        tar -xzf mbedtls-${MBEDTLS_VERSION}.tar.gz
-        cd mbedtls-${MBEDTLS_VERSION}
+        wget -q https://www.tcpdump.org/release/libpcap-${LIBPCAP_VERSION}.tar.gz
+        tar -xzf libpcap-${LIBPCAP_VERSION}.tar.gz
+        cd libpcap-${LIBPCAP_VERSION}
         
-        # Static build mbedtls
-        make clean 2>/dev/null || true
-        make -j$(nproc) CC=$CC AR=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-ar \
-          CFLAGS="-mfloat-abi=soft -Os -fPIC" \
-          LDFLAGS="-static" \
-          SHARED=0 \
-          lib
+        # Configure libpcap for static build (minimal features)
+        CC=$CC AR=$AR \
+        ./configure \
+          --host=arm-linux \
+          --prefix=/tmp/libpcap-install \
+          --disable-shared \
+          --enable-static \
+          --disable-dbus \
+          --disable-rdma \
+          --without-libnl \
+          --without-dpdk \
+          --without-turbostat \
+          --without-snf \
+          --without-caif \
+          --without-bpf \
+          --without-dag \
+          --without-septel \
+          --without-riverbed \
+          --without-dlpi \
+          --without-nit \
+          CFLAGS="-mfloat-abi=soft -Os" \
+          LDFLAGS="-static"
         
-        # Install mbedtls locally
-        make DESTDIR=/tmp/mbedtls-install install
+        make -j$(nproc)
+        make install
         
-        # Build curl
-        CURL_VERSION=8.5.0
+        # Build tcpdump
+        TCPDUMP_VERSION=4.99.4
         cd /tmp
-        wget -q https://curl.se/download/curl-${CURL_VERSION}.tar.gz
-        tar -xzf curl-${CURL_VERSION}.tar.gz
-        cd curl-${CURL_VERSION}
+        wget -q https://www.tcpdump.org/release/tcpdump-${TCPDUMP_VERSION}.tar.gz
+        tar -xzf tcpdump-${TCPDUMP_VERSION}.tar.gz
+        cd tcpdump-${TCPDUMP_VERSION}
         
-        # Configure curl with minimal features (HTTP/HTTPS only)
+        # Configure tcpdump with minimal features
         CC=$CC \
         ./configure \
           --host=arm-linux \
-          --prefix=/tmp/curl-install \
-          --with-mbedtls=/tmp/mbedtls-install/usr/local \
-          --enable-static \
+          --prefix=/tmp/tcpdump-install \
+          --with-pcap=/tmp/libpcap-install \
           --disable-shared \
-          --disable-dict \
-          --disable-file \
-          --disable-ftp \
-          --disable-gopher \
-          --disable-imap \
-          --disable-ldap \
-          --disable-pop3 \
-          --disable-rtmp \
-          --disable-rtsp \
+          --enable-static \
+          --without-crypto \
+          --without-sandbox-capsicum \
+          --without-sandbox-pledge \
+          --without-sandbox-chroot \
+          --without-sandbox-rlimit \
           --disable-smb \
-          --disable-smtp \
-          --disable-telnet \
-          --disable-tftp \
-          --disable-libcurl-option \
-          --disable-cookies \
-          --disable-ipv6 \
-          --disable-manual \
-          --disable-mime \
-          --disable-netrc \
-          --disable-progress-meter \
-          --disable-proxy \
-          --disable-alt-svc \
-          --disable-hsts \
-          --disable-websockets \
-          --without-brotli \
-          --without-libidn2 \
-          --without-libpsl \
-          --without-librtmp \
-          --without-libssh2 \
-          --without-nghttp2 \
-          --without-ngtcp2 \
-          --without-nghttp3 \
-          --without-quiche \
-          --without-zlib \
-          --without-zstd \
-          --enable-https \
+          --disable-smrsh \
+          --disable-localpcap \
+          --disable-usb \
+          --disable-bluetooth \
           CFLAGS="-mfloat-abi=soft -Os" \
           LDFLAGS="-static"
         
@@ -275,14 +265,14 @@ jobs:
         make install
         
         # Strip binary
-        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip /tmp/curl-install/bin/curl
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip /tmp/tcpdump-install/sbin/tcpdump
         
         # Copy to workspace
-        cp /tmp/curl-install/bin/curl ${{ github.workspace }}/curl-static
+        cp /tmp/tcpdump-install/sbin/tcpdump ${{ github.workspace }}/tcpdump-static
         
-        echo "=== curl static binary info ==="
-        file ${{ github.workspace }}/curl-static
-        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d ${{ github.workspace }}/curl-static | grep NEEDED || echo "No dynamic dependencies - fully static!"
+        echo "=== tcpdump static binary info ==="
+        file ${{ github.workspace }}/tcpdump-static
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d ${{ github.workspace }}/tcpdump-static | grep NEEDED || echo "No dynamic dependencies - fully static!"
         
     - name: Check binary info
       run: |
@@ -298,6 +288,11 @@ jobs:
         file busybox
         readelf -h busybox | head -20
         
+        echo "=== tcpdump-static binary info ==="
+        file tcpdump-static
+        readelf -h tcpdump-static | head -20
+        
+        
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -306,7 +301,5 @@ jobs:
           demos/at/at_dlopen
           demos/nv/nv_dlopen
           busybox
-          swapon
-          swapoff
-          mkswap
+          tcpdump-static
           curl-static
