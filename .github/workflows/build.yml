@@ -172,6 +172,9 @@ jobs:
         sed -i 's/^# CONFIG_SWAPOFF is not set/CONFIG_SWAPOFF=y/' .config
         sed -i 's/^# CONFIG_FEATURE_SWAPON_DISCARD is not set/CONFIG_FEATURE_SWAPON_DISCARD=y/' .config
         sed -i 's/^# CONFIG_FEATURE_SWAPON_PRI is not set/CONFIG_FEATURE_SWAPON_PRI=y/' .config
+        # Disable shell to avoid uClibc glob() bug
+        sed -i 's/^CONFIG_ASH=.*/# CONFIG_ASH is not set/' .config
+        sed -i 's/^CONFIG_SH_IS_ASH=.*/# CONFIG_SH_IS_ASH is not set/' .config
         
         # Update config
         yes "" | make oldconfig
