@@ -188,9 +188,14 @@ jobs:
         file busybox
         ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d busybox | grep NEEDED || echo "No dynamic dependencies - fully static!"
         
+        # Create symlinks for swap utilities
+        ln -sf busybox swapon
+        ln -sf busybox swapoff
+        ln -sf busybox mkswap
+
         # Copy to workspace
-        cp busybox ${{ github.workspace }}/
-        ls -la ${{ github.workspace }}/busybox
+        cp busybox swapon swapoff mkswap ${{ github.workspace }}/
+        ls -la ${{ github.workspace }}/busybox ${{ github.workspace }}/swapon
 
     - name: Static build tcpdump
       run: |
@@ -295,5 +300,9 @@ jobs:
           demos/at/at_dlopen
           demos/nv/nv_dlopen
           busybox
+          swapon
+          swapoff
+          mkswap
           tcpdump-static
           curl-static
+
