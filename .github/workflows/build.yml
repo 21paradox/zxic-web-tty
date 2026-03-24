@@ -192,7 +192,7 @@ jobs:
         cp busybox ${{ github.workspace }}/
         ls -la ${{ github.workspace }}/busybox
 
-     - name: Static build tcpdump
+    - name: Static build tcpdump
       run: |
         # Set toolchain
         export CROSS_COMPILE=${{ env.GCC_PREFIX }}-
