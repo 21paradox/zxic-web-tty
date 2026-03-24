@@ -190,12 +190,16 @@ jobs:
         # Build libblkid and swapon
         make -j$(nproc)
         
+        # Find swapon binary
+        SWAPON_BIN=$(find . -name "swapon" -type f | head -1)
+        echo "Found swapon at: $SWAPON_BIN"
+        
         # Strip and verify
-        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip sys-utils/swapon
-        file sys-utils/swapon
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip "$SWAPON_BIN"
+        file "$SWAPON_BIN"
         
         # Copy to workspace
-        cp sys-utils/swapon ${{ github.workspace }}/swapon-static
+        cp "$SWAPON_BIN" ${{ github.workspace }}/swapon-static
         
         echo "=== swapon static binary info ==="
         file ${{ github.workspace }}/swapon-static
