@@ -264,10 +264,10 @@ jobs:
         make install
         
         # Strip binary
-        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip /tmp/tcpdump-install/sbin/tcpdump
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip /tmp/tcpdump-install/bin/tcpdump
         
         # Copy to workspace
-        cp /tmp/tcpdump-install/sbin/tcpdump ${{ github.workspace }}/tcpdump-static
+        cp /tmp/tcpdump-install/bin/tcpdump ${{ github.workspace }}/tcpdump-static
         
         echo "=== tcpdump static binary info ==="
         file ${{ github.workspace }}/tcpdump-static
