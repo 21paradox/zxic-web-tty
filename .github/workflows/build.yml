@@ -191,6 +191,98 @@ jobs:
         # Copy to workspace
         cp busybox ${{ github.workspace }}/
         ls -la ${{ github.workspace }}/busybox
+
+    - name: Static build curl with mbedtls (HTTP/HTTPS support)
+      run: |
+        # Set toolchain
+        export CROSS_COMPILE=${{ env.GCC_PREFIX }}-
+        export PATH=${{ env.TOOLCHAIN_PATH }}/bin:$PATH
+        CC=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-gcc
+        
+        # Build mbedtls first (lightweight SSL library)
+        MBEDTLS_VERSION=2.28.9
+        cd /tmp
+        wget -q https://github.com/Mbed-TLS/mbedtls/archive/refs/tags/v${MBEDTLS_VERSION}.tar.gz -O mbedtls-${MBEDTLS_VERSION}.tar.gz
+        tar -xzf mbedtls-${MBEDTLS_VERSION}.tar.gz
+        cd mbedtls-${MBEDTLS_VERSION}
+        
+        # Static build mbedtls
+        make clean 2>/dev/null || true
+        make -j$(nproc) CC=$CC AR=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-ar \
+          CFLAGS="-mfloat-abi=soft -Os -fPIC" \
+          LDFLAGS="-static" \
+          SHARED=0 \
+          lib
+        
+        # Install mbedtls locally
+        make DESTDIR=/tmp/mbedtls-install install
+        
+        # Build curl
+        CURL_VERSION=8.5.0
+        cd /tmp
+        wget -q https://curl.se/download/curl-${CURL_VERSION}.tar.gz
+        tar -xzf curl-${CURL_VERSION}.tar.gz
+        cd curl-${CURL_VERSION}
+        
+        # Configure curl with minimal features (HTTP/HTTPS only)
+        CC=$CC \
+        ./configure \
+          --host=arm-linux \
+          --prefix=/tmp/curl-install \
+          --with-mbedtls=/tmp/mbedtls-install/usr/local \
+          --enable-static \
+          --disable-shared \
+          --disable-dict \
+          --disable-file \
+          --disable-ftp \
+          --disable-gopher \
+          --disable-imap \
+          --disable-ldap \
+          --disable-pop3 \
+          --disable-rtmp \
+          --disable-rtsp \
+          --disable-smb \
+          --disable-smtp \
+          --disable-telnet \
+          --disable-tftp \
+          --disable-libcurl-option \
+          --disable-cookies \
+          --disable-ipv6 \
+          --disable-manual \
+          --disable-mime \
+          --disable-netrc \
+          --disable-progress-meter \
+          --disable-proxy \
+          --disable-alt-svc \
+          --disable-hsts \
+          --disable-websockets \
+          --without-brotli \
+          --without-libidn2 \
+          --without-libpsl \
+          --without-librtmp \
+          --without-libssh2 \
+          --without-nghttp2 \
+          --without-ngtcp2 \
+          --without-nghttp3 \
+          --without-quiche \
+          --without-zlib \
+          --without-zstd \
+          --enable-https \
+          CFLAGS="-mfloat-abi=soft -Os" \
+          LDFLAGS="-static"
+        
+        make -j$(nproc)
+        make install
+        
+        # Strip binary
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip /tmp/curl-install/bin/curl
+        
+        # Copy to workspace
+        cp /tmp/curl-install/bin/curl ${{ github.workspace }}/curl-static
+        
+        echo "=== curl static binary info ==="
+        file ${{ github.workspace }}/curl-static
+        ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d ${{ github.workspace }}/curl-static | grep NEEDED || echo "No dynamic dependencies - fully static!"
         
     - name: Check binary info
       run: |
@@ -217,3 +309,4 @@ jobs:
           swapon
           swapoff
           mkswap
+          curl-static
