@@ -168,6 +168,7 @@ jobs:
           --enable-swapon \
           --enable-libblkid \
           --enable-libmount \
+          --enable-libsmartcols \
           --without-ncurses \
           --without-tinfo \
           --without-readline \
