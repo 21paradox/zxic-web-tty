@@ -82,15 +82,28 @@ jobs:
         
         # Enable toolchain only build
         BR2_TOOLCHAIN=y
+        
+        # Enable adbd
+        BR2_PACKAGE_ANDROID_TOOLS=y
+        BR2_PACKAGE_ANDROID_TOOLS_ADBD=y
         EOF
         
         make olddefconfig
         
-    - name: Build toolchain (this may take 20-40 minutes)
+    - name: Build toolchain and adbd (this may take 20-40 minutes)
       if: steps.buildroot-cache.outputs.cache-hit != 'true'
       run: |
         cd ~/buildroot-${BUILDROOT_VERSION}
-        make toolchain -j$(nproc)
+        make toolchain android-tools -j$(nproc)
+        
+        # Check if adbd was built
+        if [ -f ~/buildroot-${BUILDROOT_VERSION}/output/target/usr/bin/adbd ]; then
+          echo "=== adbd built successfully ==="
+          file ~/buildroot-${BUILDROOT_VERSION}/output/target/usr/bin/adbd
+        else
+          echo "Warning: adbd binary not found in output"
+          ls -la ~/buildroot-${BUILDROOT_VERSION}/output/target/usr/bin/ 2>/dev/null | head -20 || true
+        fi
         
     - name: Save toolchain to cache directory
       if: steps.buildroot-cache.outputs.cache-hit != 'true'
@@ -273,125 +286,11 @@ jobs:
         file ${{ github.workspace }}/tcpdump-static
         ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d ${{ github.workspace }}/tcpdump-static | grep NEEDED || echo "No dynamic dependencies - fully static!"
         
-    # - name: Static build curl
-    #   run: |
-    #     # Set toolchain
-    #     export CROSS_COMPILE=${{ env.GCC_PREFIX }}-
-    #     export PATH=${{ env.TOOLCHAIN_PATH }}/bin:$PATH
-    #     CC=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-gcc
-    #     AR=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-ar
-    #     STRIP=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip
-        
-    #     cd /tmp
-        
-    #     # Download and build zlib (required by curl)
-    #     ZLIB_VERSION=1.3.1
-    #     wget -q https://zlib.net/zlib-${ZLIB_VERSION}.tar.gz
-    #     tar -xzf zlib-${ZLIB_VERSION}.tar.gz
-    #     cd zlib-${ZLIB_VERSION}
-        
-    #     CC=$CC AR=$AR \
-    #     ./configure \
-    #       --prefix=/tmp/zlib-install \
-    #       --static
-        
-    #     make -j$(nproc)
-    #     make install
-        
-    #     cd /tmp
-        
-    #     # Build OpenSSL for curl HTTPS support
-    #     OPENSSL_VERSION=1.1.1w
-    #     wget -q https://www.openssl.org/source/openssl-${OPENSSL_VERSION}.tar.gz
-    #     tar -xzf openssl-${OPENSSL_VERSION}.tar.gz
-    #     cd openssl-${OPENSSL_VERSION}
-        
-    #     ./Configure linux-armv4 --cross-compile-prefix=${{ env.GCC_PREFIX }}- \
-    #       --prefix=/tmp/openssl-curl \
-    #       no-shared no-tests no-docs \
-    #       CFLAGS="-mfloat-abi=soft" \
-    #       CXXFLAGS="-mfloat-abi=soft"
-        
-    #     make -j$(nproc)
-    #     make install_sw
-        
-    #     cd /tmp
-        
-    #     # Download and build curl statically
-    #     CURL_VERSION=8.5.0
-    #     wget -q https://curl.se/download/curl-${CURL_VERSION}.tar.gz
-    #     tar -xzf curl-${CURL_VERSION}.tar.gz
-    #     cd curl-${CURL_VERSION}
-        
-    #     CC=$CC AR=$AR \
-    #     ./configure \
-    #       --host=arm-linux \
-    #       --prefix=/tmp/curl-install \
-    #       --disable-shared \
-    #       --enable-static \
-    #       --with-zlib=/tmp/zlib-install \
-    #       --with-openssl=/tmp/openssl-curl \
-    #       --disable-ldap \
-    #       --disable-ldaps \
-    #       --disable-rtsp \
-    #       --disable-dict \
-    #       --disable-telnet \
-    #       --disable-tftp \
-    #       --disable-pop3 \
-    #       --disable-imap \
-    #       --disable-smb \
-    #       --disable-smtp \
-    #       --disable-gopher \
-    #       --disable-manual \
-    #       --disable-libcurl-option \
-    #       --disable-threaded-resolver \
-    #       --disable-cookies \
-    #       --without-libpsl \
-    #       --without-libidn2 \
-    #       --without-nghttp2 \
-    #       --without-zstd \
-    #       --without-brotli \
-    #       CFLAGS="-mfloat-abi=soft -Os" \
-    #       LDFLAGS="-static"
-        
-    #     make -j$(nproc)
-    #     make install
-        
-    #     # Strip binary
-    #     $STRIP /tmp/curl-install/bin/curl
-        
-    #     # Copy to workspace
-    #     cp /tmp/curl-install/bin/curl ${{ github.workspace }}/curl-static
-        
-    #     echo "=== curl-static binary info ==="
-    #     file ${{ github.workspace }}/curl-static
-    #     ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d ${{ github.workspace }}/curl-static | grep NEEDED || echo "No dynamic dependencies - fully static!"
-        
-    - name: Build adbd (Android Debug Bridge daemon)
+    - name: Copy adbd from buildroot output
       run: |
-        # Set toolchain
-        export CROSS_COMPILE=${{ env.GCC_PREFIX }}-
-        export PATH=${{ env.TOOLCHAIN_PATH }}/bin:$PATH
         STRIP=${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-strip
         
-        cd ~/buildroot-${{ env.BUILDROOT_VERSION }}
-        
-        # Enable android-tools package (includes adbd) in buildroot
-        cat >> .config << 'EOF'
-        BR2_PACKAGE_ANDROID_TOOLS=y
-        BR2_PACKAGE_ANDROID_TOOLS_ADBD=y
-        EOF
-        
-        make olddefconfig 2>/dev/null || true
-        
-        # Build android-tools (adbd)
-        make android-tools -j$(nproc) || {
-          echo "Note: android-tools build failed, may need additional dependencies"
-          echo "Checking available adb packages..."
-          make menuconfig --help 2>/dev/null || true
-        }
-        
-        # Check if adbd was built
+        # Copy adbd from buildroot output
         if [ -f ~/buildroot-${{ env.BUILDROOT_VERSION }}/output/target/usr/bin/adbd ]; then
           cp ~/buildroot-${{ env.BUILDROOT_VERSION }}/output/target/usr/bin/adbd ${{ github.workspace }}/adbd
           $STRIP ${{ github.workspace }}/adbd 2>/dev/null || true
@@ -399,8 +298,9 @@ jobs:
           file ${{ github.workspace }}/adbd
           ${{ env.TOOLCHAIN_PATH }}/bin/${{ env.GCC_PREFIX }}-readelf -d ${{ github.workspace }}/adbd | grep NEEDED || echo "No dynamic dependencies!"
         else
-          echo "adbd build via buildroot did not produce output, checking target packages..."
-          ls -la ~/buildroot-${{ env.BUILDROOT_VERSION }}/output/target/usr/bin/ 2>/dev/null | grep -i adb || true
+          echo "Warning: adbd not found in buildroot output"
+          ls -la ~/buildroot-${{ env.BUILDROOT_VERSION }}/output/target/usr/bin/ 2>/dev/null | head -20 || true
+          exit 1
         fi
         
     - name: Check binary info
