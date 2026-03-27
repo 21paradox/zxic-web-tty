@@ -39,7 +39,7 @@ jobs:
       id: buildroot-cache
       with:
         path: ~/buildroot-output
-        key: buildroot-${{ env.BUILDROOT_VERSION }}-armv7-uclibc-softfloat
+        key: buildroot-${{ env.BUILDROOT_VERSION }}-armv7-uclibc-softfloat-v2
         
     - name: Download and extract buildroot
       if: steps.buildroot-cache.outputs.cache-hit != 'true'
@@ -103,6 +103,18 @@ jobs:
         else
           echo "Warning: adbd binary not found in output"
           ls -la ~/buildroot-${BUILDROOT_VERSION}/output/target/usr/bin/ 2>/dev/null | head -20 || true
+        fi
+        
+    - name: Build adbd (if cache hit but adbd missing)
+      if: steps.buildroot-cache.outputs.cache-hit == 'true'
+      run: |
+        # Check if adbd exists in restored cache
+        if [ ! -f ~/buildroot-${BUILDROOT_VERSION}/output/target/usr/bin/adbd ]; then
+          echo "Cache hit but adbd missing, rebuilding android-tools..."
+          cd ~/buildroot-${BUILDROOT_VERSION}
+          make android-tools -j$(nproc)
+        else
+          echo "adbd found in cache, skipping rebuild"
         fi
         
     - name: Save toolchain to cache directory
